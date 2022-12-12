@@ -9,7 +9,7 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, VaultResponse, QueryMsg};
 use crate::state::{save_vault, Config, Vault, CONFIG, VAULTS, VAULT_SEQ, Ledger};
-use cw20::{Cw20Contract, Cw20ExecuteMsg, Cw20ReceiveMsg};
+use cw20::{Cw20Contract};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw20-vault";
@@ -51,7 +51,7 @@ pub fn execute(
     // TODO
     // Temporary code for passing test
     match msg {
-        ExecuteMsg::CreateVault{admin_addr: admin} => {
+        ExecuteMsg::CreateVault { admin_addr: admin } => {
             let vault = Vault {
                 admin_addr: Addr::unchecked(admin),
                 collected: Uint128::new(10),
@@ -59,7 +59,10 @@ pub fn execute(
             };
             save_vault(deps, &vault)?;
         }
-        ExecuteMsg::Receive(msg) => {
+        ExecuteMsg::Withdraw { vaultId: vaultId, amount: amount } => {
+            // TODO
+        }
+        ExecuteMsg::Receive ( msg ) => {
             // TODO
         }
     };

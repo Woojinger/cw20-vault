@@ -1,11 +1,10 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Uint128, Uint64};
-use cw20::Cw20ReceiveMsg;
 use crate::state::{Ledger};
+use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    /// cw20_addr is the address of the allowed cw20 token
     pub cw20_addr: String,
 }
 
@@ -14,8 +13,17 @@ pub enum ExecuteMsg {
     CreateVault {
         admin_addr: String,
     },
-    /// Receive forwards received cw20 tokens to an execution logic
+    Withdraw {
+        vaultId: Uint64,
+        amount: Uint128,
+    },
+    // deposit. be executed when you send coin to this contract in CW20 contract
     Receive(Cw20ReceiveMsg),
+}
+
+#[cw_serde]
+pub enum ReceiveMsg {
+    Send { vault_id: Uint64 },
 }
 
 #[cw_serde]
@@ -30,5 +38,5 @@ pub enum QueryMsg {
 pub struct VaultResponse {
     pub admin_addr: String,
     pub collected: Uint128,
-    pub ledger_list: Vec<Ledger>
+    pub ledger_list: Vec<Ledger>,
 }
