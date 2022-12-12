@@ -12,7 +12,7 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     CreateVault (),
     Withdraw {
-        vaultId: Uint64,
+        vault_id: Uint64,
         amount: Uint128,
     },
     // deposit. be executed when you send coin to this contract in CW20 contract

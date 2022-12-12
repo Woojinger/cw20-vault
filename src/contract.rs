@@ -7,9 +7,9 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, VaultResponse, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, VaultResponse, QueryMsg, ReceiveMsg};
 use crate::state::{save_vault, Config, Vault, CONFIG, VAULTS, VAULT_SEQ, Ledger};
-use cw20::{Cw20Contract};
+use cw20::{Cw20Contract, Cw20ReceiveMsg};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw20-vault";
@@ -37,13 +37,14 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("owner", owner)
-        .add_attribute("cw20_addr", msg.cw20_addr))
+        .add_attribute("cw20_addr", msg.cw20_addr)
+    )
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
@@ -56,18 +57,26 @@ pub fn execute(
                 collected: Uint128::new(0),
                 ledger_list: vec![],
             };
-            let newVaultId = save_vault(deps, &vault).unwrap();
+            let new_vault_id = save_vault(deps, &vault).unwrap();
             Ok(Response::new()
                 .add_attribute("method", "execute_create_vault")
-                .add_attribute("vault_id", Uint64::new(newVaultId)))
+                .add_attribute("vault_id", Uint64::new(new_vault_id))
+            )
         }
-        ExecuteMsg::Withdraw { vaultId: vaultId, amount: amount } => {
+        ExecuteMsg::Withdraw { vault_id: vault_id, amount: amount } => {
             // TODO
             Ok(Response::new())
         }
         ExecuteMsg::Receive(msg) => {
             // TODO
-            Ok(Response::new())
+            // Temporary implementation
+            let new_vault_id = 0;
+            Ok(Response::new()
+                .add_attribute("method", "execute_receive")
+                .add_attribute("vault_id",Uint64::new(new_vault_id))
+                .add_attribute("amount", msg.amount)
+                .add_attribute("timestamp", Uint64::new(env.block.time.nanos()))
+            )
         }
     }
 }
@@ -138,6 +147,48 @@ mod tests {
                 admin_addr: Addr::unchecked("tx_sender"),
                 collected: Uint128::new(0),
                 ledger_list: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn receive() {
+        let mut deps = mock_dependencies();
+
+        let msg = InstantiateMsg {
+            cw20_addr: String::from(MOCK_CONTRACT_ADDR),
+        };
+        let info = mock_info("tx_sender", &[]);
+
+        let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+
+        // create 1st vault
+        let msg = ExecuteMsg::CreateVault();
+        let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+        assert_eq!(res.attributes.get(1).unwrap().value, "1");
+
+        // receive Cw20ReceiveMsg from cw20 contract
+        let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
+            sender: String::from(MOCK_CONTRACT_ADDR),
+            amount: Uint128::new(100),
+            msg: to_binary(&ReceiveMsg::Send { vault_id: Uint64::new(1) }).unwrap(),
+        });
+        let info = mock_info(MOCK_CONTRACT_ADDR, &[]);
+        let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+        let time_stamp_nano_str = res.attributes.get(3).unwrap().clone().value;
+        let time_stamp = Timestamp::from_nanos(time_stamp_nano_str.parse::<u64>().unwrap());
+
+        // query vault
+        let msg = QueryMsg::GetVault {id: Uint64::new(1)};
+        let res = query(deps.as_ref(), mock_env(), msg).unwrap();
+
+        let vault: Vault = from_binary(&res).unwrap();
+        assert_eq!(
+            vault,
+            Vault {
+                admin_addr: Addr::unchecked("tx_sender"),
+                collected: Uint128::new(100),
+                ledger_list: vec![Ledger{coin_amount:Uint128::new(100), receive_time:time_stamp}],
             }
         );
     }
