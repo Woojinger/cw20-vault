@@ -33,7 +33,6 @@ pub fn instantiate(
     CONFIG.save(deps.storage, &config)?;
 
     VAULT_SEQ.save(deps.storage, &0)?;
-    // TODO
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -51,24 +50,26 @@ pub fn execute(
     // TODO
     // Temporary code for passing test
     match msg {
-        ExecuteMsg::CreateVault { admin_addr: admin } => {
+        ExecuteMsg::CreateVault() => {
             let vault = Vault {
-                admin_addr: Addr::unchecked(admin),
+                admin_addr: Addr::unchecked(info.sender),
                 collected: Uint128::new(10),
                 ledger_list: vec![Ledger { coin_amount: Uint128::new(10), receive_time: Timestamp::from_seconds(10) }],
             };
-            save_vault(deps, &vault)?;
+            let newVaultId = save_vault(deps, &vault).unwrap();
+            Ok(Response::new()
+                .add_attribute("method","execute_create_vault")
+                .add_attribute("vault_id",Uint64::new(newVaultId)))
         }
         ExecuteMsg::Withdraw { vaultId: vaultId, amount: amount } => {
             // TODO
+            Ok(Response::new())
         }
         ExecuteMsg::Receive ( msg ) => {
             // TODO
+            Ok(Response::new())
         }
-    };
-
-    let mut res = Response::new();
-    Ok(res)
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -100,15 +101,13 @@ mod tests {
         let msg = InstantiateMsg {
             cw20_addr: String::from(MOCK_CONTRACT_ADDR),
         };
-        let info = mock_info("creator", &[]);
+        let info = mock_info("tx_sender", &[]);
 
         let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
 
-        let msg = ExecuteMsg::CreateVault {
-            admin_addr: String::from("testAdmin"),
-        };
+        let msg = ExecuteMsg::CreateVault ();
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-        assert_eq!(res.messages.len(), 0);
+        assert_eq!(res.attributes.get(1).unwrap().value, "1");
 
         let msg = QueryMsg::GetVault { id: Uint64::new(1) };
         let res = query(deps.as_ref(), mock_env(), msg).unwrap();
@@ -117,7 +116,7 @@ mod tests {
         assert_eq!(
             vault,
             Vault {
-                admin_addr: Addr::unchecked("testAdmin"),
+                admin_addr: Addr::unchecked("tx_sender"),
                 collected: Uint128::new(10),
                 ledger_list: vec![Ledger { coin_amount: Uint128::new(10), receive_time: Timestamp::from_seconds(10) }],
             }

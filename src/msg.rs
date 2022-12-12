@@ -10,9 +10,7 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    CreateVault {
-        admin_addr: String,
-    },
+    CreateVault (),
     Withdraw {
         vaultId: Uint64,
         amount: Uint128,

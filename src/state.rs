@@ -27,10 +27,11 @@ pub struct Ledger {
 pub const VAULT_SEQ: Item<u64> = Item::new("vault_seq");
 pub const VAULTS: Map<u64, Vault> = Map::new("vault");
 
-pub fn save_vault(deps: DepsMut, vault: &Vault) -> StdResult<()> {
+pub fn save_vault(deps: DepsMut, vault: &Vault) -> StdResult<u64> {
     // increment id if exists, or return 1
     let id = VAULT_SEQ.load(deps.storage)?;
     let id = Uint64::new(id).checked_add(Uint64::new(1))?.u64();
     VAULT_SEQ.save(deps.storage, &id)?;
-    VAULTS.save(deps.storage, id, vault)
+    VAULTS.save(deps.storage, id, vault)?;
+    Ok(id)
 }
