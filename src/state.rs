@@ -12,7 +12,7 @@ pub const CONFIG: Item<Config> = Item::new("config");
 
 #[cw_serde]
 pub struct Vault {
-    pub admin_addr: Addr,
+    pub owner_addr: Addr,
     pub collected: Uint128,
     pub ledger_list: Vec<Ledger>
 }

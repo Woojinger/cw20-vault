@@ -60,7 +60,7 @@ pub fn execute(
             };
 
             let vault = Vault {
-                admin_addr: Addr::unchecked(info.sender.clone()),
+                owner_addr: Addr::unchecked(info.sender.clone()),
                 collected: Uint128::new(0),
                 ledger_list: vec![],
             };
@@ -70,9 +70,14 @@ pub fn execute(
                 .add_attribute("owner",info.sender.clone())
             )
         }
-        ExecuteMsg::Withdraw { vault_id: vault_id, amount: amount } => {
+        ExecuteMsg::Withdraw { vault_owner_addr: owner_addr, amount: amount } => {
             // TODO
-            Ok(Response::new())
+            Ok(Response::new()
+                .add_attribute("method", "execute_withdraw")
+                .add_attribute("is_success","true")
+                .add_attribute("get_amount", amount)
+                .add_attribute("remaining_amount", Uint128::new(0))
+            )
         }
         ExecuteMsg::Receive(msg) => {
             let config = CONFIG.load(deps.storage)?;
@@ -104,14 +109,14 @@ pub fn deposit_vault(deps: DepsMut, addr: Addr, amount: Uint128, timestamp: u64)
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetVault { vault_admin_addr } => to_binary(&query_vault(deps, vault_admin_addr)?),
+        QueryMsg::GetVault { vault_owner_addr: vault_admin_addr } => to_binary(&query_vault(deps, vault_admin_addr)?),
     }
 }
 
 fn query_vault(deps: Deps, addr: Addr) -> StdResult<VaultResponse> {
     let vault = VAULTS.load(deps.storage,addr)?;
     Ok(VaultResponse {
-        admin_addr: vault.admin_addr.to_string(),
+        owner_addr: vault.owner_addr.to_string(),
         collected: vault.collected,
         ledger_list: vault.ledger_list,
     })
@@ -139,14 +144,14 @@ mod tests {
         let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
         assert_eq!(res.attributes.get(1).unwrap().value, "tx_sender");
 
-        let msg = QueryMsg::GetVault { vault_admin_addr: info.sender.clone() };
+        let msg = QueryMsg::GetVault { vault_owner_addr: info.sender.clone() };
         let res = query(deps.as_ref(), mock_env(), msg).unwrap();
 
         let vault: Vault = from_binary(&res).unwrap();
         assert_eq!(
             vault,
             Vault {
-                admin_addr: Addr::unchecked("tx_sender"),
+                owner_addr: Addr::unchecked("tx_sender"),
                 collected: Uint128::new(0),
                 ledger_list: vec![],
             }
@@ -184,21 +189,156 @@ mod tests {
             msg: to_binary(&ReceiveMsg{vault_owner_addr: Addr::unchecked("tx_sender")}).unwrap(),
         });
         let info = mock_info(MOCK_CONTRACT_ADDR, &[]);
-        let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
-        let time_stamp_nano_str = res.attributes.get(2).unwrap().clone().value;
-        let time_stamp = Timestamp::from_nanos(time_stamp_nano_str.parse::<u64>().unwrap());
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(120);
+        let res = execute(deps.as_mut(), env, info.clone(), msg).unwrap();
+        assert_eq!(res, Response::new()
+            .add_attribute("method","execute_receive")
+            .add_attribute("amount",Uint128::new(100))
+            .add_attribute("timestamp", Uint64::new(Timestamp::from_seconds(120).nanos()))
+        );
 
         // query vault
-        let msg = QueryMsg::GetVault { vault_admin_addr: Addr::unchecked("tx_sender") };
+        let msg = QueryMsg::GetVault { vault_owner_addr: Addr::unchecked("tx_sender") };
         let res = query(deps.as_ref(), mock_env(), msg).unwrap();
 
         let vault: Vault = from_binary(&res).unwrap();
         assert_eq!(
             vault,
             Vault {
-                admin_addr: Addr::unchecked("tx_sender"),
+                owner_addr: Addr::unchecked("tx_sender"),
                 collected: Uint128::new(100),
-                ledger_list: vec![Ledger{coin_amount:Uint128::new(100), receive_time:time_stamp}],
+                ledger_list: vec![Ledger{coin_amount:Uint128::new(100), receive_time:Timestamp::from_seconds(120)}],
+            }
+        );
+    }
+
+    #[test]
+    fn withdraw() {
+        let mut deps = mock_dependencies();
+
+        let msg = InstantiateMsg {
+            cw20_addr: String::from(MOCK_CONTRACT_ADDR),
+        };
+        let info = mock_info("tx_sender", &[]);
+
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(0);
+
+        let _res = instantiate(deps.as_mut(), env, info.clone(), msg).unwrap();
+
+        // create vault after 1s
+        let msg = ExecuteMsg::CreateVault();
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(1);
+
+        let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+        assert_eq!(res.attributes.get(1).unwrap().value, "tx_sender");
+
+        // Deposit 100 coin after 1 min of vault creation
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(60);
+        let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
+            sender: String::from(MOCK_CONTRACT_ADDR),
+            amount: Uint128::new(100),
+            msg: to_binary(&ReceiveMsg{vault_owner_addr: Addr::unchecked("tx_sender")}).unwrap(),
+        });
+        let info = mock_info(MOCK_CONTRACT_ADDR, &[]);
+        let res = execute(deps.as_mut(), env, info.clone(), msg).unwrap();
+
+        // withdraw in less than 1 minute fails
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(90);
+        let msg = ExecuteMsg::Withdraw { vault_owner_addr: Addr::unchecked("tx_sender"), amount: Uint128::new(50) };
+        let info = mock_info("tx_sender", &[]);
+        let res = execute(deps.as_mut(), env, info.clone(), msg).unwrap();
+        assert_eq!(res.attributes.get(1).unwrap().value, "false");
+
+        // withdraw more than reserved coins fails
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(121);
+        let msg = ExecuteMsg::Withdraw { vault_owner_addr: Addr::unchecked("tx_sender"), amount: Uint128::new(150) };
+        let info = mock_info("tx_sender", &[]);
+        let res = execute(deps.as_mut(), env, info.clone(), msg).unwrap();
+        assert_eq!(res.attributes.get(1).unwrap().value, "false");
+
+        // withdraw 50 coins
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(121);
+        let msg = ExecuteMsg::Withdraw { vault_owner_addr: Addr::unchecked("tx_sender"), amount: Uint128::new(50) };
+        let info = mock_info("tx_sender", &[]);
+        let res = execute(deps.as_mut(), env, info.clone(), msg).unwrap();
+        assert_eq!(res, Response::new()
+            .add_attribute("method","execute_withdraw")
+            .add_attribute("is_success", "true")
+            .add_attribute("get_amount",Uint128::new(50))
+            .add_attribute("remaining_amount", Uint128::new(50))
+        );
+
+        // Deposit 100 coin more
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(150);
+        let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
+            sender: String::from(MOCK_CONTRACT_ADDR),
+            amount: Uint128::new(100),
+            msg: to_binary(&ReceiveMsg{vault_owner_addr: Addr::unchecked("tx_sender")}).unwrap(),
+        });
+        let info = mock_info(MOCK_CONTRACT_ADDR, &[]);
+        let res = execute(deps.as_mut(), env, info.clone(), msg).unwrap();
+        assert_eq!(res, Response::new()
+            .add_attribute("method","execute_receive")
+            .add_attribute("amount",Uint128::new(100))
+            .add_attribute("timestamp", Uint64::new(Timestamp::from_seconds(150).nanos()))
+        );
+
+        // Try withdrawing 100 coins but fail. It can receive 50 coins but should wait for other 50 coins
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(200);
+        let msg = ExecuteMsg::Withdraw { vault_owner_addr: Addr::unchecked("tx_sender"), amount: Uint128::new(100) };
+        let info = mock_info("tx_sender", &[]);
+        let res = execute(deps.as_mut(), env, info.clone(), msg).unwrap();
+        assert_eq!(res.attributes.get(1).unwrap().value, "false");
+
+        // Deposit 100 coin more
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(220);
+        let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
+            sender: String::from(MOCK_CONTRACT_ADDR),
+            amount: Uint128::new(100),
+            msg: to_binary(&ReceiveMsg{vault_owner_addr: Addr::unchecked("tx_sender")}).unwrap(),
+        });
+        let info = mock_info(MOCK_CONTRACT_ADDR, &[]);
+        let res = execute(deps.as_mut(), env, info.clone(), msg).unwrap();
+        assert_eq!(res, Response::new()
+            .add_attribute("method","execute_receive")
+            .add_attribute("amount",Uint128::new(100))
+            .add_attribute("timestamp", Uint64::new(Timestamp::from_seconds(220).nanos()))
+        );
+
+        // Withdraw 200 coins. Total withdraw coins are 250
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(300);
+        let msg = ExecuteMsg::Withdraw { vault_owner_addr: Addr::unchecked("tx_sender"), amount: Uint128::new(200) };
+        let info = mock_info("tx_sender", &[]);
+        let res = execute(deps.as_mut(), env, info.clone(), msg).unwrap();
+        assert_eq!(res, Response::new()
+            .add_attribute("method","execute_withdraw")
+            .add_attribute("is_success", "true")
+            .add_attribute("get_amount",Uint128::new(200))
+            .add_attribute("remaining_amount", Uint128::new(50))
+        );
+
+        // query vault
+        let msg = QueryMsg::GetVault { vault_owner_addr: Addr::unchecked("tx_sender") };
+        let res = query(deps.as_ref(), mock_env(), msg).unwrap();
+
+        let vault: Vault = from_binary(&res).unwrap();
+        assert_eq!(
+            vault,
+            Vault {
+                owner_addr: Addr::unchecked("tx_sender"),
+                collected: Uint128::new(50),
+                ledger_list: vec![Ledger{coin_amount:Uint128::new(50), receive_time:Timestamp::from_seconds(220)}],
             }
         );
     }

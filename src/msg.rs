@@ -12,7 +12,7 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     CreateVault(),
     Withdraw {
-        vault_id: Uint64,
+        vault_owner_addr: Addr,
         amount: Uint128,
     },
     // deposit. be executed when you send coin to this contract in CW20 contract
@@ -28,13 +28,13 @@ pub struct ReceiveMsg {
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(VaultResponse)]
-    GetVault { vault_admin_addr: Addr },
+    GetVault { vault_owner_addr: Addr },
 }
 
 // We define a custom struct for each query response
 #[cw_serde]
 pub struct VaultResponse {
-    pub admin_addr: String,
+    pub owner_addr: String,
     pub collected: Uint128,
     pub ledger_list: Vec<Ledger>,
 }
