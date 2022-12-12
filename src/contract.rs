@@ -73,13 +73,13 @@ pub fn execute(
             if config.cw20_addr != info.sender {
                 return Err(ContractError::Unauthorized {});
             }
-            let receiveMsg: ReceiveMsg = from_binary(&msg.msg)?;
-            // TODO: treat ReceiveMsg
-            // Temporary Implementation
-            let new_vault_id = 0;
+
+            let receive_msg: ReceiveMsg = from_binary(&msg.msg)?;
+            deposit_vault(deps, receive_msg.vault_id, msg.amount, env.block.time.nanos())?;
+
             Ok(Response::new()
                 .add_attribute("method", "execute_receive")
-                .add_attribute("vault_id",Uint64::new(new_vault_id))
+                .add_attribute("vault_id",Uint64::new(receive_msg.vault_id.u64()))
                 .add_attribute("amount", msg.amount)
                 .add_attribute("timestamp", Uint64::new(env.block.time.nanos()))
             )
@@ -87,7 +87,12 @@ pub fn execute(
     }
 }
 
-
+pub fn deposit_vault(deps: DepsMut, vault_id: Uint64, amount: Uint128, timestamp: u64) -> StdResult<()>{
+    let mut vault = VAULTS.load(deps.storage, vault_id.u64())?;
+    vault.collected += amount;
+    vault.ledger_list.push(Ledger{coin_amount: amount, receive_time: Timestamp::from_nanos(timestamp) });
+    VAULTS.save(deps.storage, vault_id.u64(), &vault)
+}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
