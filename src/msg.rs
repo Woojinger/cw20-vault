@@ -20,8 +20,8 @@ pub enum ExecuteMsg {
 }
 
 #[cw_serde]
-pub enum ReceiveMsg {
-    Send { vault_id: Uint64 },
+pub struct ReceiveMsg {
+    pub vault_id: Uint64
 }
 
 #[cw_serde]

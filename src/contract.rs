@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Addr, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+    from_binary, to_binary, Binary, Addr, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
     Uint64, Uint128, Timestamp,
 };
 use cw2::set_contract_version;
@@ -68,8 +68,14 @@ pub fn execute(
             Ok(Response::new())
         }
         ExecuteMsg::Receive(msg) => {
-            // TODO
-            // Temporary implementation
+            let config = CONFIG.load(deps.storage)?;
+            // ExecuteMsg::Receive msg should be sened by cw20 contract
+            if config.cw20_addr != info.sender {
+                return Err(ContractError::Unauthorized {});
+            }
+            let receiveMsg: ReceiveMsg = from_binary(&msg.msg)?;
+            // TODO: treat ReceiveMsg
+            // Temporary Implementation
             let new_vault_id = 0;
             Ok(Response::new()
                 .add_attribute("method", "execute_receive")
@@ -80,6 +86,8 @@ pub fn execute(
         }
     }
 }
+
+
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
@@ -171,7 +179,7 @@ mod tests {
         let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
             sender: String::from(MOCK_CONTRACT_ADDR),
             amount: Uint128::new(100),
-            msg: to_binary(&ReceiveMsg::Send { vault_id: Uint64::new(1) }).unwrap(),
+            msg: to_binary(&ReceiveMsg { vault_id: Uint64::new(1) }).unwrap(),
         });
         let info = mock_info(MOCK_CONTRACT_ADDR, &[]);
         let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
