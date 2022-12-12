@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Uint128, Uint64};
+use cosmwasm_std::{Uint128, Uint64, Addr};
 use crate::state::{Ledger};
 use cw20::Cw20ReceiveMsg;
 
@@ -10,7 +10,7 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    CreateVault (),
+    CreateVault(),
     Withdraw {
         vault_id: Uint64,
         amount: Uint128,
@@ -21,14 +21,14 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 pub struct ReceiveMsg {
-    pub vault_id: Uint64
+    pub vault_owner_addr: Addr,
 }
 
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(VaultResponse)]
-    GetVault { id: Uint64 },
+    GetVault { vault_admin_addr: Addr },
 }
 
 // We define a custom struct for each query response

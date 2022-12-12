@@ -1,14 +1,14 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_binary, to_binary, Binary, Addr, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+    from_binary, to_binary, Binary, Addr, Deps, DepsMut, Env, MessageInfo, Response, StdResult, StdError,
     Uint64, Uint128, Timestamp,
 };
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, VaultResponse, QueryMsg, ReceiveMsg};
-use crate::state::{save_vault, Config, Vault, CONFIG, VAULTS, VAULT_SEQ, Ledger};
+use crate::state::{Config, Vault, CONFIG, VAULTS, Ledger};
 use cw20::{Cw20Contract, Cw20ReceiveMsg};
 
 // version info for migration info
@@ -32,8 +32,6 @@ pub fn instantiate(
     };
     CONFIG.save(deps.storage, &config)?;
 
-    VAULT_SEQ.save(deps.storage, &0)?;
-
     Ok(Response::new()
         .add_attribute("method", "instantiate")
         .add_attribute("owner", owner)
@@ -52,15 +50,24 @@ pub fn execute(
     // Temporary code for passing test
     match msg {
         ExecuteMsg::CreateVault() => {
+            // check if vault exists
+            match VAULTS.load(deps.storage, info.sender.clone()) {
+                Ok(_) => return Ok(Response::new()
+                    .add_attribute("method","execute_create_vault")
+                    .add_attribute("msg","vault already exists")
+                ),
+                Err(_) => ()
+            };
+
             let vault = Vault {
-                admin_addr: Addr::unchecked(info.sender),
+                admin_addr: Addr::unchecked(info.sender.clone()),
                 collected: Uint128::new(0),
                 ledger_list: vec![],
             };
-            let new_vault_id = save_vault(deps, &vault).unwrap();
+            VAULTS.save(deps.storage, info.sender.clone(), &vault)?;
             Ok(Response::new()
                 .add_attribute("method", "execute_create_vault")
-                .add_attribute("vault_id", Uint64::new(new_vault_id))
+                .add_attribute("owner",info.sender.clone())
             )
         }
         ExecuteMsg::Withdraw { vault_id: vault_id, amount: amount } => {
@@ -69,17 +76,17 @@ pub fn execute(
         }
         ExecuteMsg::Receive(msg) => {
             let config = CONFIG.load(deps.storage)?;
-            // ExecuteMsg::Receive msg should be sened by cw20 contract
+            // ExecuteMsg::Receive msg should be sent by cw20 contract
             if config.cw20_addr != info.sender {
                 return Err(ContractError::Unauthorized {});
             }
 
             let receive_msg: ReceiveMsg = from_binary(&msg.msg)?;
-            deposit_vault(deps, receive_msg.vault_id, msg.amount, env.block.time.nanos())?;
+
+            deposit_vault(deps, receive_msg.vault_owner_addr.clone(), msg.amount, env.block.time.nanos())?;
 
             Ok(Response::new()
                 .add_attribute("method", "execute_receive")
-                .add_attribute("vault_id",Uint64::new(receive_msg.vault_id.u64()))
                 .add_attribute("amount", msg.amount)
                 .add_attribute("timestamp", Uint64::new(env.block.time.nanos()))
             )
@@ -87,22 +94,22 @@ pub fn execute(
     }
 }
 
-pub fn deposit_vault(deps: DepsMut, vault_id: Uint64, amount: Uint128, timestamp: u64) -> StdResult<()>{
-    let mut vault = VAULTS.load(deps.storage, vault_id.u64())?;
+pub fn deposit_vault(deps: DepsMut, addr: Addr, amount: Uint128, timestamp: u64) -> StdResult<()>{
+    let mut vault = VAULTS.load(deps.storage, addr.clone())?;
     vault.collected += amount;
     vault.ledger_list.push(Ledger{coin_amount: amount, receive_time: Timestamp::from_nanos(timestamp) });
-    VAULTS.save(deps.storage, vault_id.u64(), &vault)
+    VAULTS.save(deps.storage, addr.clone(), &vault)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetVault { id } => to_binary(&query_vault(deps, id)?),
+        QueryMsg::GetVault { vault_admin_addr } => to_binary(&query_vault(deps, vault_admin_addr)?),
     }
 }
 
-fn query_vault(deps: Deps, id: Uint64) -> StdResult<VaultResponse> {
-    let vault = VAULTS.load(deps.storage, id.u64())?;
+fn query_vault(deps: Deps, addr: Addr) -> StdResult<VaultResponse> {
+    let vault = VAULTS.load(deps.storage,addr)?;
     Ok(VaultResponse {
         admin_addr: vault.admin_addr.to_string(),
         collected: vault.collected,
@@ -130,9 +137,9 @@ mod tests {
         // create 1st vault
         let msg = ExecuteMsg::CreateVault();
         let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
-        assert_eq!(res.attributes.get(1).unwrap().value, "1");
+        assert_eq!(res.attributes.get(1).unwrap().value, "tx_sender");
 
-        let msg = QueryMsg::GetVault { id: Uint64::new(1) };
+        let msg = QueryMsg::GetVault { vault_admin_addr: info.sender.clone() };
         let res = query(deps.as_ref(), mock_env(), msg).unwrap();
 
         let vault: Vault = from_binary(&res).unwrap();
@@ -148,19 +155,9 @@ mod tests {
         // create 2nd vault
         let msg = ExecuteMsg::CreateVault();
         let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
-        assert_eq!(res.attributes.get(1).unwrap().value, "2");
-
-        let msg = QueryMsg::GetVault { id: Uint64::new(2) };
-        let res = query(deps.as_ref(), mock_env(), msg).unwrap();
-
-        let vault: Vault = from_binary(&res).unwrap();
-        assert_eq!(
-            vault,
-            Vault {
-                admin_addr: Addr::unchecked("tx_sender"),
-                collected: Uint128::new(0),
-                ledger_list: vec![],
-            }
+        assert_eq!(res, Response::new()
+            .add_attribute("method","execute_create_vault")
+            .add_attribute("msg","vault already exists")
         );
     }
 
@@ -175,24 +172,24 @@ mod tests {
 
         let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
 
-        // create 1st vault
+        // create vault
         let msg = ExecuteMsg::CreateVault();
         let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
-        assert_eq!(res.attributes.get(1).unwrap().value, "1");
+        assert_eq!(res.attributes.get(1).unwrap().value, "tx_sender");
 
         // receive Cw20ReceiveMsg from cw20 contract
         let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
             sender: String::from(MOCK_CONTRACT_ADDR),
             amount: Uint128::new(100),
-            msg: to_binary(&ReceiveMsg { vault_id: Uint64::new(1) }).unwrap(),
+            msg: to_binary(&ReceiveMsg{vault_owner_addr: Addr::unchecked("tx_sender")}).unwrap(),
         });
         let info = mock_info(MOCK_CONTRACT_ADDR, &[]);
         let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
-        let time_stamp_nano_str = res.attributes.get(3).unwrap().clone().value;
+        let time_stamp_nano_str = res.attributes.get(2).unwrap().clone().value;
         let time_stamp = Timestamp::from_nanos(time_stamp_nano_str.parse::<u64>().unwrap());
 
         // query vault
-        let msg = QueryMsg::GetVault {id: Uint64::new(1)};
+        let msg = QueryMsg::GetVault { vault_admin_addr: Addr::unchecked("tx_sender") };
         let res = query(deps.as_ref(), mock_env(), msg).unwrap();
 
         let vault: Vault = from_binary(&res).unwrap();
