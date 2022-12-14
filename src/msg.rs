@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Uint128, Uint64, Addr};
+use cosmwasm_std::{Uint128, Addr};
 use crate::state::{Ledger};
 use cw20::Cw20ReceiveMsg;
 
@@ -12,7 +12,6 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     CreateVault(),
     Withdraw {
-        vault_owner_addr: Addr,
         amount: Uint128,
     },
     // deposit. be executed when you send coin to this contract in CW20 contract
