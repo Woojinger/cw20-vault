@@ -92,6 +92,23 @@ junod tx wasm execute $VAULT_CONTRACT $WITHDRAW $TXFLAG --from testAccount1
 junod query wasm contract-state smart $CONTRACT $QUERY_VAULT $NODE
 ```
 
+# Unit test, Compiling
+Unit test
+```Shell
+cargo unit-test
+```
+Compiling
+```Shell
+cargo wasm
+```
+
+Optimize for **arm-64**
+```
+docker run --rm -v "$(pwd)":/code \
+  --mount type=volume,source="$(basename "$(pwd)")_cache",target=/code/target \
+  --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
+  cosmwasm/rust-optimizer-arm64:0.12.8
+```
 # Other Resource
 Please refer to the link below for help
 
