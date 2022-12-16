@@ -1,15 +1,39 @@
-## CW20 Vault Contract
-### What does this contract do?
-- User can create vault which stores PGCoin(CW20)
-- User can deposit their PGCoin(CW20) to vault
-- User can withdraw their PGCoin from vault
-  - Withdrawing can be executed after 1 minute of coin deposit
-  - All coin deposits are recorded in amount and deposit time
+# CW20 Vault Contract
+## What does this contract do?
+User can create vault which stores PGCoin(CW20).\
+User can deposit their PGCoin(CW20) to vault.
+- All coin deposits are recorded in amount and deposit time
+```Shell
+# when you query vault info
+data:
+  # all coins vault have
+  collected: "300"
+  # all deposits recoreded when you despoits coins to vault
+  # receive time is UNIX time nanos
+  ledger_list:
+  - coin_amount: "100"
+    # 22.12.16 08:04:16 GMT+00:00
+    receive_time: "1671177856257807410"
+  - coin_amount: "200"
+    # 22.12.16 08:21.33 GMT+00:00
+    receive_time: "1671178893141157818"
+  # vault owner
+  owner_addr: juno1sulm4ga8jgd73zs5q9wsumszu7ns6nkgxxvf3l
+```
+User can withdraw their PGCoin from vault in some condition.\
+Withdrawing can be executed after 1 minute of coin deposit. \
+coins to be withdrawn are determined in order of deposit.
+- If you try to withdraw 200 coin from above vault at 22.12.16 08:06:00, it will fail
+- If you try to withdraw 100 coin from above vault at 22.12.16 08:06:00, it will success
+- If you try to withdraw 300 coin from above vault at 22.12.16 08:30:00, it will success
+- If you try to withdraw 500 coin from above vault at 22.12.16 08:30:00, it will fail
 
-### CW20 Vault Contract Info
-network: Juno test network(uni-5)
+# CW20 Vault Contract Info
+network: Juno test network(uni-5) \
+code_id: 3420 \
+address: juno1cx3rj8qpxtzd8efqgjfxd2xjq6d0j5te3y7amzurp8upgwnyk43q44zljq
 
-## CW20 Contract Info
+# CW20 Contract(PGCoin) Info
 network: Juno test network(uni-5)\
 address: juno1ka5p7mm8rfat7zs89xeegxyu9kxtljszckkdqfgv4e5x023c3hws7wjxaw\
 name: PGCoin\
@@ -17,33 +41,13 @@ symbol: PGCoin\
 total_supply: 1000000000000\
 decimals: 6
 
-## How to check Contract Operation
-### 1. install junod and set testnet config
+# How to check Contract Operation
+## 1. install junod and set testnet config
+
+**you can modify contract command in sourceme.sh**
+
 ```Shell
-export CHAIN_ID="uni-5"
-export TESTNET_NAME="uni-5"
-export DENOM="ujunox"
-export BECH32_HRP="juno"
-export WASMD_VERSION="0.27"
-export JUNOD_VERSION="v9.0.0"
-export CONFIG_DIR=".juno"
-export BINARY="junod"
-
-export COSMJS_VERSION="v0.28.4"
-export GENESIS_URL="https://raw.githubusercontent.com/CosmosContracts/testnets/main/uni-5/genesis.json"
-export PERSISTENT_PEERS_URL="https://raw.githubusercontent.com/CosmosContracts/testnets/main/uni-5/persistent_peers.txt"
-export SEEDS_URL="https://raw.githubusercontent.com/CosmosContracts/testnets/main/uni-5/seeds.txt"
-
-export RPC="https://rpc.uni.juno.deuslabs.fi:443"
-export LCD="https://lcd.uni.juno.deuslabs.fi"
-export FAUCET="https://faucet.uni.juno.deuslabs.fi"
-
-export COSMOVISOR_VERSION="v0.1.0"
-export COSMOVISOR_HOME=$HOME/.juno
-export COSMOVISOR_NAME=junod
-
-export NODE=(--node $RPC)
-export TXFLAG=($NODE --chain-id $CHAIN_ID --gas-prices 0.025ujunox --gas auto --gas-adjustment 1.3 --broadcast-mode block)
+source sourceme.sh
 ```
 After you source the above variables, you should set the variables to junod
 ```Shell
@@ -51,25 +55,44 @@ junod config chain-id $CHAIN_ID
 junod config node $RPC
 ```
 
-### 2. Set CW20 Contract Info and Query Command
-```Shell
-export COIN_CONTRACT=juno1ka5p7mm8rfat7zs89xeegxyu9kxtljszckkdqfgv4e5x023c3hws7wjxaw
-export QueryTokenInfo='{"token_info":{}}'
-# get balance for juno1sulm4ga8jgd73zs5q9wsumszu7ns6nkgxxvf3l
-export QueryBalance='{"balance":{"address":"juno1sulm4ga8jgd73zs5q9wsumszu7ns6nkgxxvf3l"}}'
-```
-After source the above variables, you can query info from contract.
-
+## 2. Query CW20 Contract Info
 ```Shell
 # Get balance info for juno1sulm4ga8jgd73zs5q9wsumszu7ns6nkgxxvf3l
-junod query wasm contract-state smart $COIN_CONTRACT "$QueryBalance" $NODE
+junod query wasm contract-state smart $COIN_CONTRACT "$QUERY_OWNER_BALANCE" $NODE
 # Get Token Info
-junod query wasm contract-state smart $COIN_CONTRACT "$QueryTokenInfo" $NODE
+junod query wasm contract-state smart $COIN_CONTRACT "$QUERY_TOKEN_INFO" $NODE
 ```
 
-### 3. Set CW20-Vault Contract Info and Query Command
+## 3. Create vault in cw20-vault Contract
+### Create Vault of {account}
+```Shell
+junod tx wasm execute $VAULT_CONTRACT $CREATE $TXFLAG --from {account}  
+```
 
+### Send cw20 token to cw20-vault
+```Shell
+# Send 200 cw20 token to "juno1sulm4ga8jgd73zs5q9wsumszu7ns6nkgxxvf3l" vault
+junod tx wasm execute $COIN_CONTRACT $SEND_TO_VAULT $TXFLAG --from testAccount1
+```
+**If you want to modify msg, you should create binary message like below**
+```Rust
+// If cw20-vault contract receive cw20 token, cw20-vault contract transfer cw20 token to "juno1sulm4ga8jgd73zs5q9wsumszu7ns6nkgxxvf3l" vault
+let binmsg = to_binary(&ReceiveMsg { vault_owner_addr: Addr::unchecked("juno1sulm4ga8jgd73zs5q9wsumszu7ns6nkgxxvf3l") }).unwrap();
+println!("{}", binmsg);
+```
 
+### Withdraw cw20 token from sender vault
+```Shell
+junod tx wasm execute $VAULT_CONTRACT $WITHDRAW $TXFLAG --from testAccount1
+```
+
+### Query vault
+```Shell
+# Get Vault of juno1sulm4ga8jgd73zs5q9wsumszu7ns6nkgxxvf3l
+junod query wasm contract-state smart $CONTRACT $QUERY_VAULT $NODE
+```
+
+# Other Resource
 Please refer to the link below for help
 
 [Cosmwasm 배포 및 실행하기](https://pangyoalto.com/cosmwasm-contract-2/)
