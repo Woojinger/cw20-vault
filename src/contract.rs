@@ -71,16 +71,13 @@ pub fn execute(
         ExecuteMsg::Withdraw { amount } => {
             let mut vault = VAULTS.load(deps.storage, info.sender.clone())?;
             if amount > vault.collected {
-                return Ok(Response::new()
-                    .add_attribute("method", "execute_withdraw")
-                    .add_attribute("is_success", "false")
-                    .add_attribute("get_amount", Uint128::new(0))
-                    .add_attribute("remaining_amount", vault.collected)
-                );
+                return get_withdraw_fail_msg(vault.collected);
             }
             let ledgers = &mut vault.ledger_list;
             let cur_time = env.block.time.seconds();
             let mut amount_sum = Uint128::new(0);
+
+            // iterate and withdraw coin from ledger
             for l in ledgers.iter_mut() {
                 // withdraw within 1 minute of deposit fails
                 if cur_time - l.receive_time.seconds() <= 60 {
@@ -96,12 +93,7 @@ pub fn execute(
             }
 
             if amount_sum != amount {
-                return Ok(Response::new()
-                    .add_attribute("method", "execute_withdraw")
-                    .add_attribute("is_success", "false")
-                    .add_attribute("get_amount", Uint128::new(0))
-                    .add_attribute("remaining_amount", vault.collected)
-                );
+                return get_withdraw_fail_msg(vault.collected);
             }
 
             vault.collected -= amount;
@@ -153,6 +145,15 @@ pub fn deposit_vault(deps: DepsMut, addr: Addr, amount: Uint128, timestamp: u64)
     vault.collected += amount;
     vault.ledger_list.push(Ledger { coin_amount: amount, receive_time: Timestamp::from_nanos(timestamp) });
     VAULTS.save(deps.storage, addr.clone(), &vault)
+}
+
+pub fn get_withdraw_fail_msg(collected: Uint128) -> Result<Response, ContractError> {
+    return Ok(Response::new()
+        .add_attribute("method", "execute_withdraw")
+        .add_attribute("is_success", "false")
+        .add_attribute("get_amount", Uint128::new(0))
+        .add_attribute("remaining_amount", collected)
+    )
 }
 
 pub fn remove_empty_ledger(ledgers: &mut Vec<Ledger>) {
