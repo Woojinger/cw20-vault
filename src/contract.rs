@@ -9,7 +9,7 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, VaultResponse, QueryMsg, ReceiveMsg};
 use crate::state::{Config, Vault, CONFIG, VAULTS, Ledger};
-use cw20::{Cw20Contract, Cw20ExecuteMsg, Cw20ReceiveMsg};
+use cw20::{Cw20Contract, Cw20ExecuteMsg};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw20-vault";
@@ -47,7 +47,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::CreateVault() => {
+        ExecuteMsg::CreateVault{} => {
             // check if vault exists
             match VAULTS.load(deps.storage, info.sender.clone()) {
                 Ok(_) => return Ok(Response::new()
@@ -181,6 +181,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
     use cosmwasm_std::{from_binary, Addr, CosmosMsg, WasmMsg};
+    use cw20::Cw20ReceiveMsg;
 
     #[test]
     fn create_vault() {
@@ -194,7 +195,7 @@ mod tests {
         let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
 
         // create 1st vault
-        let msg = ExecuteMsg::CreateVault();
+        let msg = ExecuteMsg::CreateVault{};
         let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
         assert_eq!(res.attributes.get(1).unwrap().value, "tx_sender");
 
@@ -212,7 +213,7 @@ mod tests {
         );
 
         // create 2nd vault
-        let msg = ExecuteMsg::CreateVault();
+        let msg = ExecuteMsg::CreateVault{};
         let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
         assert_eq!(res, Response::new()
             .add_attribute("method", "execute_create_vault")
@@ -232,7 +233,7 @@ mod tests {
         let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
 
         // create vault
-        let msg = ExecuteMsg::CreateVault();
+        let msg = ExecuteMsg::CreateVault{};
         let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
         assert_eq!(res.attributes.get(1).unwrap().value, "tx_sender");
 
@@ -281,7 +282,7 @@ mod tests {
         let _res = instantiate(deps.as_mut(), env, info.clone(), msg).unwrap();
 
         // create vault after 1s
-        let msg = ExecuteMsg::CreateVault();
+        let msg = ExecuteMsg::CreateVault{};
         let mut env = mock_env();
         env.block.time = Timestamp::from_seconds(1);
 
