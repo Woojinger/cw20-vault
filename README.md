@@ -89,7 +89,7 @@ junod tx wasm execute $VAULT_CONTRACT $WITHDRAW $TXFLAG --from testAccount1
 ### Query vault
 ```Shell
 # Get Vault of juno1sulm4ga8jgd73zs5q9wsumszu7ns6nkgxxvf3l
-junod query wasm contract-state smart $CONTRACT $QUERY_VAULT $NODE
+junod query wasm contract-state smart $VAULT_CONTRACT $QUERY_VAULT $NODE
 ```
 
 # Unit test, Compiling
